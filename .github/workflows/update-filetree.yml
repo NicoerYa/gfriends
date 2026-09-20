@@ -1,0 +1,89 @@
+name: Update Filetree
+
+on:
+  push:
+    paths:
+      - 'Content/**'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  update-filetree:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Generate Filetree.json
+        shell: python
+        run: |
+          import json
+          import os
+          import time
+
+          root = "Content"
+          result = {}
+
+          total_num = 0
+          total_size = 0
+
+          for current_root, dirs, files in os.walk(root):
+              dirs.sort()
+              files.sort()
+
+              rel_dir = os.path.relpath(current_root, root)
+
+              if rel_dir == ".":
+                  target = result
+              else:
+                  target = result
+                  for part in rel_dir.replace("\\", "/").split("/"):
+                      target = target.setdefault(part, {})
+
+              for filename in files:
+                  filepath = os.path.join(current_root, filename)
+                  stat = os.stat(filepath)
+
+                  total_num += 1
+                  total_size += stat.st_size
+
+                  target[filename] = (
+                      filename +
+                      "?t=" +
+                      str(int(stat.st_mtime))
+                  )
+
+          data = {
+              "Information": {
+                  "TotalNum": str(total_num),
+                  "TotalSize": str(total_size),
+                  "Timestamp": str(time.time_ns())
+              },
+              "Content": result
+          }
+
+          with open("Filetree.json", "w", encoding="utf-8") as f:
+              json.dump(
+                  data,
+                  f,
+                  ensure_ascii=False,
+                  separators=(",", ":")
+              )
+
+      - name: Commit Filetree.json
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git add Filetree.json
+
+          if git diff --cached --quiet; then
+            echo "Filetree.json 没有变化"
+            exit 0
+          fi
+
+          git commit -m "Update Filetree.json"
+          git push
